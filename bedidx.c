@@ -100,7 +100,7 @@ void *bed_read(const char *fn)
 	int dret;
 	kstring_t *str;
 	// read the list
-	fp = strcmp(fn, "-")? gzopen(fn, "r") : gzdopen(fileno(stdin), "r");
+	fp = strcmp(fn, "-")? gzopen(fn, "r") : gzdopen(_fileno(stdin), "r");
 	if (fp == 0) return 0;
 	str = calloc(1, sizeof(kstring_t));
 	ks = ks_init(fp);
@@ -119,8 +119,10 @@ void *bed_read(const char *fn)
 			if (ks_getuntil(ks, 0, str, &dret) > 0 && isdigit(str->s[0])) {
 				beg = atoi(str->s); // begin
 				if (dret != '\n') {
-					if (ks_getuntil(ks, 0, str, &dret) > 0 && isdigit(str->s[0]))
+					if (ks_getuntil(ks, 0, str, &dret) > 0 && isdigit(str->s[0])) {
 						end = atoi(str->s); // end
+						if (end < beg) end = -1;
+					}
 				}
 			}
 		}

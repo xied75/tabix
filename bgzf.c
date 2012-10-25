@@ -25,7 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+//#include <unistd.h>
 #include <assert.h>
 #include <sys/types.h>
 #include "bgzf.h"
@@ -225,7 +225,7 @@ static int deflate_block(BGZF *fp, int block_length)
 	remaining = block_length - input_length;
 	if (remaining > 0) {
 		assert(remaining <= input_length);
-		memcpy(fp->uncompressed_block, fp->uncompressed_block + input_length, remaining);
+		memcpy(fp->uncompressed_block, (uint8_t*)fp->uncompressed_block + input_length, remaining);
 	}
 	fp->block_offset = remaining;
 	return compressed_length;
@@ -237,7 +237,7 @@ static int inflate_block(BGZF* fp, int block_length)
 	z_stream zs;
 	zs.zalloc = NULL;
 	zs.zfree = NULL;
-	zs.next_in = fp->compressed_block + 18;
+	zs.next_in = (uint8_t*)fp->compressed_block + 18;
 	zs.avail_in = block_length - 16;
 	zs.next_out = fp->uncompressed_block;
 	zs.avail_out = BGZF_BLOCK_SIZE;

@@ -1,5 +1,5 @@
 #include <string.h>
-#include <unistd.h>
+//#include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -7,6 +7,10 @@
 #include "bgzf.h"
 #include "tabix.h"
 #include "knetfile.h"
+#include "glibc_win64_flat/getopt.h"
+#include <Windows.h>
+
+#define strcasecmp _stricmp
 
 #define PACKAGE_VERSION "0.2.5 (r1005)"
 
@@ -14,13 +18,19 @@
 
 int reheader_file(const char *header, const char *file, int meta)
 {
+    char *buffer;
+    int skip_until = 0;
+    FILE *fh;
+    int page_size;
+    char *buf;
+    BGZF *bgzf_out;
+    ssize_t nread;
     BGZF *fp = bgzf_open(file,"r");
     if (bgzf_read_block(fp) != 0 || !fp->block_length)
         return -1;
     
-    char *buffer = fp->uncompressed_block;
-    int skip_until = 0;
-
+    buffer = fp->uncompressed_block;
+    
     if ( buffer[0]==meta )
     {
         skip_until = 1;
@@ -50,13 +60,12 @@ int reheader_file(const char *header, const char *file, int meta)
         }
     }
 
-    FILE *fh = fopen(header,"r");
+    fh = fopen(header,"r");
     if ( !fh )
         error("%s: %s", header,strerror(errno));
-    int page_size = getpagesize();
-    char *buf = valloc(page_size);
-    BGZF *bgzf_out = bgzf_dopen(fileno(stdout), "w");
-    ssize_t nread;
+    page_size = getpagesize();
+    buf = malloc(page_size); //Dong Code
+    bgzf_out = bgzf_dopen(fileno(stdout), "w");
     while ( (nread=fread(buf,1,page_size-1,fh))>0 )
     {
         if ( nread<page_size-1 && buf[nread-1]!='\n' )
@@ -75,6 +84,7 @@ int reheader_file(const char *header, const char *file, int meta)
 
     while (1)
     {
+        int count;
 #ifdef _USE_KNETFILE
         nread = knet_read(fp->fp, buf, page_size);
 #else
@@ -83,7 +93,7 @@ int reheader_file(const char *header, const char *file, int meta)
         if ( nread<=0 ) 
             break;
 
-        int count = fwrite(buf, 1, nread, bgzf_out->fp);
+        count = fwrite(buf, 1, nread, bgzf_out->fp);
         if (count != nread)
             error("Write failed, wrote %d instead of %d bytes.\n", count,(int)nread);
     }
@@ -100,6 +110,9 @@ int main(int argc, char *argv[])
 	int c, skip = -1, meta = -1, list_chrms = 0, force = 0, print_header = 0, print_only_header = 0, bed_reg = 0;
 	ti_conf_t conf = ti_conf_gff, *conf_ptr = NULL;
     const char *reheader = NULL;
+    struct __stat64 stat_tbi,stat_vcf;
+    char *fnidx;
+
 	while ((c = getopt(argc, argv, "p:s:b:e:0S:c:lhHfBr:")) >= 0) {
 		switch (c) {
 		case 'B': bed_reg = 1; break;
@@ -151,7 +164,7 @@ int main(int argc, char *argv[])
     if ( !conf_ptr )
     {
         int l = strlen(argv[optind]);
-        int strcasecmp(const char *s1, const char *s2);
+        //int strcasecmp(const char *s1, const char *s2);
     	if (l>=7 && strcasecmp(argv[optind]+l-7, ".gff.gz") == 0) conf_ptr = &ti_conf_gff;
         else if (l>=7 && strcasecmp(argv[optind]+l-7, ".bed.gz") == 0) conf_ptr = &ti_conf_bed;
         else if (l>=7 && strcasecmp(argv[optind]+l-7, ".sam.gz") == 0) conf_ptr = &ti_conf_sam;
@@ -181,17 +194,16 @@ int main(int argc, char *argv[])
     if (reheader)
         return reheader_file(reheader,argv[optind],conf.meta_char);
 
-	struct stat stat_tbi,stat_vcf;
-    char *fnidx = calloc(strlen(argv[optind]) + 5, 1);
+    fnidx = calloc(strlen(argv[optind]) + 5, 1);
    	strcat(strcpy(fnidx, argv[optind]), ".tbi");
 
 	if (optind + 1 == argc && !print_only_header) {
 		if (force == 0) {
-			if (stat(fnidx, &stat_tbi) == 0) 
+			if (_stat64(fnidx, &stat_tbi) == 0) 
             {
                 // Before complaining, check if the VCF file isn't newer. This is a common source of errors,
                 //  people tend not to notice that tabix failed
-                stat(argv[optind], &stat_vcf);
+                _stat64(argv[optind], &stat_vcf);
                 if ( stat_vcf.st_mtime <= stat_tbi.st_mtime )
                 {
                     fprintf(stderr, "[tabix] the index file exists. Please use '-f' to overwrite.\n");
@@ -227,8 +239,8 @@ int main(int argc, char *argv[])
         if ( !is_remote )
         {
             // Common source of errors: new VCF is used with an old index
-            stat(fnidx, &stat_tbi);
-            stat(argv[optind], &stat_vcf);
+            _stat64(fnidx, &stat_tbi);
+            _stat64(argv[optind], &stat_vcf);
             if ( force==0 && stat_vcf.st_mtime > stat_tbi.st_mtime )
             {
                 fprintf(stderr, "[tabix] the index file either does not exist or is older than the vcf file. Please reindex.\n");
@@ -247,11 +259,12 @@ int main(int argc, char *argv[])
             ti_iter_t iter;
             const char *s;
             int len;
+            const ti_conf_t *idxconf;
             if (ti_lazy_index_load(t) < 0 && bed_reg == 0) {
                 fprintf(stderr,"[tabix] failed to load the index file.\n");
                 return 1;
             }
-            const ti_conf_t *idxconf = ti_get_conf(t->idx);
+            idxconf = ti_get_conf(t->idx);
             iter = ti_query(t, 0, 0, 0);
             while ((s = ti_read(t, iter, &len)) != 0) {
                 if ((int)(*s) != idxconf->meta_char) break;
@@ -335,4 +348,12 @@ int main(int argc, char *argv[])
 		ti_close(t);
 	}
 	return 0;
+}
+
+//Dong Code
+int getpagesize()
+{
+    SYSTEM_INFO lpSystemInfo;
+    GetSystemInfo(&lpSystemInfo);
+    return lpSystemInfo.dwPageSize;
 }

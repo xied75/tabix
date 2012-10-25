@@ -1,0 +1,9 @@
+# Visual Studio Build Folders
+vstudio/ipch/
+vstudio/x64/
+
+# Visual Studio Build Files
+*.opensdf
+*.sdf
+*.suo
+*.user

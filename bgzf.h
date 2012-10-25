@@ -32,6 +32,11 @@
 #include <stdio.h>
 #include <zlib.h>
 
+//Dong Code
+#ifdef _WIN32
+typedef int ssize_t;
+#endif
+
 #define BGZF_BLOCK_SIZE 0x10000 // 64k
 
 #define BGZF_ERR_ZLIB   1
